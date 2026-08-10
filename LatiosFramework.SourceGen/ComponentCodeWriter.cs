@@ -1,23 +1,31 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-
-// This writes the shared code structure for IManagedStructComponent and ICollectionComponent.
 namespace LatiosFramework.SourceGen
 {
-    public static class ComponentCodeWriter
+    internal static class ComponentCodeWriter
     {
-        public static string WriteComponentCode(StructDeclarationSyntax componentSyntax, string componentTypeString, bool writeBurst = true)
+        public static string WriteComponentCode(in ComponentModel model, string componentTypeString, bool writeBurst = true)
         {
-            var scopePrinter = new SyntaxNodeScopePrinter(Printer.DefaultLarge, componentSyntax.Parent);
-            scopePrinter.PrintOpen(writeBurst);
-            var printer = scopePrinter.Printer;
+            var printer = Printer.DefaultLarge;
+            if (!string.IsNullOrEmpty(model.Namespace))
+            {
+                printer.PrintBeginLine("namespace ").PrintEndLine(model.Namespace);
+                printer.OpenScope();
+            }
+
+            foreach (var scope in model.ContainingScopes)
+            {
+                if (writeBurst && !scope.HasBurstCompile)
+                    printer.PrintLine("[global::Unity.Burst.BurstCompile]");
+                printer.PrintLine(scope.Declaration);
+                printer.OpenScope();
+            }
+
             printer.PrintLine("[global::System.Runtime.CompilerServices.CompilerGenerated]");
             if (writeBurst)
                 printer.PrintLine("[global::Unity.Burst.BurstCompile]");
             printer.PrintBeginLine();
-            foreach (var m in componentSyntax.Modifiers)
-                printer.Print(m.ToString()).Print(" ");
-            printer.Print("struct ").Print(componentSyntax.Identifier.Text).Print(" : global::Latios.InternalSourceGen.StaticAPI.I").Print(componentTypeString).PrintEndLine(
+            if (!string.IsNullOrEmpty(model.TargetModifiers))
+                printer.Print(model.TargetModifiers).Print(" ");
+            printer.Print("struct ").Print(model.TargetIdentifier).Print(" : global::Latios.InternalSourceGen.StaticAPI.I").Print(componentTypeString).PrintEndLine(
                 "ComponentSourceGenerated");
             {
                 printer.OpenScope();
@@ -40,17 +48,17 @@ namespace LatiosFramework.SourceGen
                             .Print(componentTypeString).PrintEndLine("ComponentDelegate>(BurstDispatch);");
                             printer.CloseScope();
                         }
-                        printer.PrintBeginLine().PrintEndLine();
+                        printer.PrintEndLine();
                     }
                     printer.PrintLine("[global::UnityEngine.Scripting.Preserve]");
                     printer.PrintBeginLine("public static global::System.Type Get").Print(componentTypeString).Print("ComponentType() => typeof(").Print(
-                        componentSyntax.Identifier.Text).PrintEndLine(");");
+                        model.TargetIdentifier).PrintEndLine(");");
                     printer.CloseScope();
                 }
-                printer.PrintBeginLine().PrintEndLine();
+                printer.PrintEndLine();
                 printer.PrintLine("public global::Unity.Entities.ComponentType componentType => global::Unity.Entities.ComponentType.ReadOnly<ExistComponent>();");
                 printer.PrintLine("public global::Unity.Entities.ComponentType cleanupType => global::Unity.Entities.ComponentType.ReadOnly<CleanupComponent>();");
-                printer.PrintBeginLine().PrintEndLine();
+                printer.PrintEndLine();
                 if (writeBurst)
                 {
                     printer.PrintBeginLine("[global::AOT.MonoPInvokeCallback(typeof(global::Latios.InternalSourceGen.StaticAPI.BurstDispatch")
@@ -61,15 +69,19 @@ namespace LatiosFramework.SourceGen
                     {
                         printer.OpenScope();
                         printer.PrintBeginLine("global::Latios.InternalSourceGen.StaticAPI.BurstDispatch").Print(componentTypeString).Print("Component<").Print(
-                            componentSyntax.Identifier.Text).PrintEndLine(">(context, operation);");
+                            model.TargetIdentifier).PrintEndLine(">(context, operation);");
                         printer.CloseScope();
                     }
                 }
                 printer.CloseScope();
             }
-            scopePrinter.PrintClose();
-            return printer.Result;
+
+            for (var i = model.ContainingScopes.Length - 1; i >= 0; i--)
+                printer.CloseScope();
+            if (!string.IsNullOrEmpty(model.Namespace))
+                printer.CloseScope();
+
+            return printer.Result.Replace("\r\n", "\n").Replace('\r', '\n');
         }
     }
 }
-

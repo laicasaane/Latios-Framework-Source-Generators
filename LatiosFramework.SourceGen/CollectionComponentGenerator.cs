@@ -1,52 +1,47 @@
-﻿using System;
-using System.Diagnostics;
-using System.IO;
+using System.Text;
+using System.Threading;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace LatiosFramework.SourceGen
 {
     [Generator]
     public class CollectionComponentGenerator : IIncrementalGenerator
     {
+        private const string InterfaceMetadataName = "global::Latios.ICollectionComponent";
+        private const string OutputRole            = "CollectionComponent";
+        private const string ComponentType         = "Collection";
+        private const bool   WriteBurst            = true;
+
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            //Debugger.Launch();
-            
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
-                predicate: (node, token) => GeneratorFilterMethods.IsSyntaxStructInterfaceMatch(node, token, "ICollectionComponent"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.ICollectionComponent")
-                ).Where(t => t is { });
+                predicate: IsCandidate,
+                transform: CreateModel
+                ).Where(IsValid);
 
-            context.RegisterSourceOutput(candidateProvider, (sourceProductionContext, source) =>
-            {
-                GenerateOutput(sourceProductionContext, source);
-            });
+            context.RegisterSourceOutput(candidateProvider, GenerateOutput);
         }
 
-        static void GenerateOutput(SourceProductionContext context, StructDeclarationSyntax collectionComponentSyntax)
+        private static bool IsCandidate(SyntaxNode syntaxNode, CancellationToken cancellationToken)
+            => ComponentModel.IsCandidate(syntaxNode, cancellationToken);
+
+        private static ComponentModel CreateModel(GeneratorSyntaxContext context, CancellationToken cancellationToken)
+            => ComponentModel.Create(
+                context,
+                cancellationToken,
+                InterfaceMetadataName,
+                OutputRole
+            );
+
+        private static bool IsValid(ComponentModel model)
+            => model.IsValid;
+
+        private static void GenerateOutput(SourceProductionContext context, ComponentModel model)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var filename       = Path.GetFileNameWithoutExtension(collectionComponentSyntax.SyntaxTree.FilePath);
-                var outputFilename = $"{filename}_{collectionComponentSyntax.Identifier}_ICollectionComponent.gen.cs";
-
-                context.AddSource(outputFilename, ComponentCodeWriter.WriteComponentCode(collectionComponentSyntax, "Collection"));
-            }
-            catch (Exception e)
-            {
-                if (e is OperationCanceledException)
-                    throw;
-                context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, collectionComponentSyntax.GetLocation(), e.ToUnityPrintableString()));
-            }
+            var code = ComponentCodeWriter.WriteComponentCode(in model, ComponentType, WriteBurst);
+            context.AddSource(model.HintName, SourceText.From(code, Encoding.UTF8));
         }
-
-        public static readonly DiagnosticDescriptor CollectionComponentErrorDescriptor =
-            new DiagnosticDescriptor("LATIOS_SG_01", "ICollectionComponent Generator Error",
-                                     "This error indicates a bug in the Latios Framework source generators. We'd appreciate a bug report. Thanks! Error message: '{0}'.",
-                                     "Latios.ICollectionComponent", DiagnosticSeverity.Error, isEnabledByDefault: true, description: "");
     }
 }
-
