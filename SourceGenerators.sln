@@ -5,6 +5,14 @@ VisualStudioVersion = 17.5.33516.290
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LatiosFramework.SourceGen", "LatiosFramework.SourceGen\LatiosFramework.SourceGen.csproj", "{2748B70C-50BE-43C3-9750-97D76D1E7FBA}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LatiosFramework.SourceGen.Analyzers", "LatiosFramework.SourceGen.Analyzers\LatiosFramework.SourceGen.Analyzers.csproj", "{2C8143A0-4E59-4901-AA53-B6A555633C19}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LatiosFramework.SourceGen.Analyzers.CodeFixes", "LatiosFramework.SourceGen.Analyzers.CodeFixes\LatiosFramework.SourceGen.Analyzers.CodeFixes.csproj", "{60ACF403-7A54-4103-B2C9-401ABD933D9F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LatiosFramework.Unika.SourceGen.Analyzers", "LatiosFramework.Unika.SourceGen.Analyzers\LatiosFramework.Unika.SourceGen.Analyzers.csproj", "{BCA26211-0BB4-4C49-9218-9617E26857E3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LatiosFramework.Unika.SourceGen.Analyzers.CodeFixes", "LatiosFramework.Unika.SourceGen.Analyzers.CodeFixes\LatiosFramework.Unika.SourceGen.Analyzers.CodeFixes.csproj", "{DCC47E94-DCB4-4687-AEC7-D165BC5BBF17}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SourceGenTestGrounds", "SourceGenTestGrounds\SourceGenTestGrounds.csproj", "{14B2F7AB-CA74-4E79-ABAE-1C23A89C926A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LatiosFramework.Unika.SourceGen", "LatiosFramework.Unika.SourceGen\LatiosFramework.Unika.SourceGen.csproj", "{CAA3FDE9-8822-4829-9589-6FE30BAB9CF9}"
@@ -19,6 +27,22 @@ Global
 		{2748B70C-50BE-43C3-9750-97D76D1E7FBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2748B70C-50BE-43C3-9750-97D76D1E7FBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2748B70C-50BE-43C3-9750-97D76D1E7FBA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8143A0-4E59-4901-AA53-B6A555633C19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8143A0-4E59-4901-AA53-B6A555633C19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8143A0-4E59-4901-AA53-B6A555633C19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8143A0-4E59-4901-AA53-B6A555633C19}.Release|Any CPU.Build.0 = Release|Any CPU
+		{60ACF403-7A54-4103-B2C9-401ABD933D9F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60ACF403-7A54-4103-B2C9-401ABD933D9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60ACF403-7A54-4103-B2C9-401ABD933D9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60ACF403-7A54-4103-B2C9-401ABD933D9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BCA26211-0BB4-4C49-9218-9617E26857E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BCA26211-0BB4-4C49-9218-9617E26857E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BCA26211-0BB4-4C49-9218-9617E26857E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BCA26211-0BB4-4C49-9218-9617E26857E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DCC47E94-DCB4-4687-AEC7-D165BC5BBF17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DCC47E94-DCB4-4687-AEC7-D165BC5BBF17}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DCC47E94-DCB4-4687-AEC7-D165BC5BBF17}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DCC47E94-DCB4-4687-AEC7-D165BC5BBF17}.Release|Any CPU.Build.0 = Release|Any CPU
 		{14B2F7AB-CA74-4E79-ABAE-1C23A89C926A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{14B2F7AB-CA74-4E79-ABAE-1C23A89C926A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{14B2F7AB-CA74-4E79-ABAE-1C23A89C926A}.Release|Any CPU.ActiveCfg = Release|Any CPU

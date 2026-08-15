@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Text;
 using LatiosFramework.SourceGen;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -18,7 +15,8 @@ namespace LatiosFramework.Unika.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxClassGenericMatch(node, token, "UnikaScriptAuthoring"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticClassGenericMatch(node, token, "global::Latios.Unika.Authoring.UnikaScriptAuthoringBase")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticClassGenericMatch(node, token, "global::Latios.Unika.Authoring.UnikaScriptAuthoringBase",
+                                                                                                "UnikaScriptAuthoring")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -26,32 +24,29 @@ namespace LatiosFramework.Unika.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (structDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, structDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, ClassDeclarationSyntax unikaAuthoringSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<ClassDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var syntaxTree     = unikaAuthoringSyntax.SyntaxTree;
-                var filename       = Path.GetFileNameWithoutExtension(syntaxTree.FilePath);
-                var outputFilename = $"{filename}_{unikaAuthoringSyntax.Identifier}_IUnikaAuthoring.gen.cs";
-
-                var semanticModel = compilation.GetSemanticModel(syntaxTree);
+                var unikaAuthoringSyntax = candidate.declaration;
+                var semanticModel        = compilation.GetSemanticModel(unikaAuthoringSyntax.SyntaxTree);
                 UnikaSemanticsExtractor.ExtractAuthoringSemantics(unikaAuthoringSyntax, semanticModel, out var bodyContext);
                 var code = AuthoringCodeWriter.WriteAuthoringCode(unikaAuthoringSyntax, ref bodyContext);
 
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_IUnikaAuthoring.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, unikaAuthoringSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(CollectionComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 

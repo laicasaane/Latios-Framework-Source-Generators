@@ -32,7 +32,9 @@ namespace LatiosFramework.SourceGen
             foreach (var field in context.injectFields)
             {
                 printer.PrintBeginLine("this.").Print(field.fieldSymbol.Name).Print(" = ");
-                ILatiosApiCodeWriter.PrintFieldConstructionExpression(ref printer, field.initKind, field.type, field.boolValue, field.builtinGetterMethodName);
+                ILatiosApiCodeWriter.PrintFieldConstructionExpression(ref printer, field.initKind, field.type.ToFullName(),
+                                                                      LatiosApiSemanticsExtractor.GetSoloTypeArgumentFullName(field.type),
+                                                                      field.boolValue, field.builtinGetterMethodName);
                 printer.PrintEndLine(";");
             }
             printer.CloseScope();

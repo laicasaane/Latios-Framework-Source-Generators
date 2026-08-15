@@ -1,6 +1,5 @@
 // This file was originally written with Claude.
 using System;
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -15,7 +14,7 @@ namespace LatiosFramework.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxStructInterfaceMatch(node, token, "ILatiosApi"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.ILatiosApi")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.ILatiosApi", "ILatiosApi")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -23,42 +22,28 @@ namespace LatiosFramework.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (structDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, structDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, StructDeclarationSyntax structSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<StructDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                LatiosApiSemanticsExtractor.ExtractApiSemantics(structSyntax, compilation, context, out var bodyContext);
-                var code = ILatiosApiCodeWriter.WriteApiCode(structSyntax, ref bodyContext);
+                LatiosApiSemanticsExtractor.ExtractApiSemantics(candidate.declaration, compilation, context, out var bodyContext);
+                var code = ILatiosApiCodeWriter.WriteApiCode(candidate.declaration, ref bodyContext);
 
-                // See the identical comment in InjectableGenerator.GenerateOutput: the hint name must be unique
-                // across the whole compilation, not just this file, so it's built from the fully-qualified type
-                // name rather than just the file name + immediate identifier (which would collide if two files
-                // sharing a name each declared a same-named ILatiosApi system).
-                var outputFilename = SanitizeHintName(bodyContext.structFullName) + "_ILatiosApi.gen.cs";
-
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_ILatiosApi.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(InternalErrorDescriptor, structSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(InternalErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
-        }
-
-        static string SanitizeHintName(string fullyQualifiedName)
-        {
-            var sb = new StringBuilder(fullyQualifiedName.Length);
-            foreach (var c in fullyQualifiedName)
-                sb.Append(char.IsLetterOrDigit(c) ? c : '_');
-            return sb.ToString();
         }
 
         public static readonly DiagnosticDescriptor InternalErrorDescriptor =

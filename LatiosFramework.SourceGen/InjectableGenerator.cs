@@ -1,6 +1,5 @@
 // This file was originally written with Claude.
 using System;
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -15,7 +14,7 @@ namespace LatiosFramework.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxStructInterfaceMatch(node, token, "IInjectable"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.IInjectable")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.IInjectable", "IInjectable")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -23,46 +22,28 @@ namespace LatiosFramework.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (structDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, structDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, StructDeclarationSyntax structSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<StructDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                InjectableSemanticsExtractor.ExtractInjectableSemantics(structSyntax, compilation, context, out var bodyContext);
-                var code = InjectableCodeWriter.WriteInjectableCode(structSyntax, ref bodyContext);
+                InjectableSemanticsExtractor.ExtractInjectableSemantics(candidate.declaration, compilation, context, out var bodyContext);
+                var code = InjectableCodeWriter.WriteInjectableCode(candidate.declaration, ref bodyContext);
 
-                // The hint name must be unique across the WHOLE generator for the WHOLE compilation, not just
-                // within this file - a name built from just the source file name + immediate struct identifier
-                // collides whenever two different outer types in the same file each nest a same-named job struct
-                // (a common pattern, e.g. several systems each with their own nested "FindChunksNeedingCopyingJob").
-                // Roslyn throws on a duplicate hint name from AddSource, which disables this generator for the
-                // ENTIRE compilation (silently - no per-candidate diagnostic), so every other IInjectable type in
-                // the same assembly loses its codegen too. The fully-qualified type name is unique per compilation,
-                // so basing the hint name on that instead avoids the collision entirely.
-                var outputFilename = SanitizeHintName(bodyContext.structFullName) + "_IInjectable.gen.cs";
-
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_IInjectable.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(InternalErrorDescriptor, structSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(InternalErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
-        }
-
-        static string SanitizeHintName(string fullyQualifiedName)
-        {
-            var sb = new StringBuilder(fullyQualifiedName.Length);
-            foreach (var c in fullyQualifiedName)
-                sb.Append(char.IsLetterOrDigit(c) ? c : '_');
-            return sb.ToString();
         }
 
         public static readonly DiagnosticDescriptor InternalErrorDescriptor =

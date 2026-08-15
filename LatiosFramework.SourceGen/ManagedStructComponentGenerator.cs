@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.IO;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -15,31 +14,30 @@ namespace LatiosFramework.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxStructInterfaceMatch(node, token, "IManagedStructComponent"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.IManagedStructComponent")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.IManagedStructComponent",
+                                                                                                  "IManagedStructComponent")
                 ).Where(t => t is { });
 
-            context.RegisterSourceOutput(candidateProvider, (sourceProductionContext, source) =>
+            context.RegisterSourceOutput(candidateProvider, (sourceProductionContext, candidate) =>
             {
-                GenerateOutput(sourceProductionContext, source);
+                GenerateOutput(sourceProductionContext, candidate);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, StructDeclarationSyntax collectionComponentSyntax)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<StructDeclarationSyntax> candidate)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var filename       = Path.GetFileNameWithoutExtension(collectionComponentSyntax.SyntaxTree.FilePath);
-                var outputFilename = $"{filename}_{collectionComponentSyntax.Identifier}_IManagedStructComponent.gen.cs";
-
-                context.AddSource(outputFilename, ComponentCodeWriter.WriteComponentCode(collectionComponentSyntax, "ManagedStruct", false));
+                context.AddSource(candidate.HintName("_IManagedStructComponent.gen.cs"),
+                                  ComponentCodeWriter.WriteComponentCode(candidate.declaration, "ManagedStruct", false));
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(ManagedStructComponentErrorDescriptor, collectionComponentSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(ManagedStructComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 

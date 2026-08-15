@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using LatiosFramework.SourceGen;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -17,7 +14,7 @@ namespace LatiosFramework.Unika.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxStructInterfaceMatch(node, token, "IUnikaScript"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.Unika.IUnikaScript")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.Unika.IUnikaScript", "IUnikaScript")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -25,32 +22,29 @@ namespace LatiosFramework.Unika.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (structDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, structDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, StructDeclarationSyntax unikaScriptSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<StructDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var syntaxTree     = unikaScriptSyntax.SyntaxTree;
-                var filename       = Path.GetFileNameWithoutExtension(syntaxTree.FilePath);
-                var outputFilename = $"{filename}_{unikaScriptSyntax.Identifier}_IUnikaScript.gen.cs";
-
-                var semanticModel = compilation.GetSemanticModel(syntaxTree);
+                var unikaScriptSyntax = candidate.declaration;
+                var semanticModel     = compilation.GetSemanticModel(unikaScriptSyntax.SyntaxTree);
                 UnikaSemanticsExtractor.ExtractScriptSemantics(unikaScriptSyntax, semanticModel, out var bodyContext, out var extensionClassContext);
                 var code = ScriptCodeWriter.WriteScriptCode(unikaScriptSyntax, ref bodyContext, ref extensionClassContext);
 
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_IUnikaScript.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, unikaScriptSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(CollectionComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 

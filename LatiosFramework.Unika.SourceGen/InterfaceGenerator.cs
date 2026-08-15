@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using LatiosFramework.SourceGen;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -17,7 +14,8 @@ namespace LatiosFramework.Unika.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxInterfaceInterfaceMatch(node, token, "IUnikaInterface"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticInterfaceInterfaceMatch(node, token, "global::Latios.Unika.IUnikaInterface")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticInterfaceInterfaceMatch(node, token, "global::Latios.Unika.IUnikaInterface",
+                                                                                                     "IUnikaInterface")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -25,32 +23,29 @@ namespace LatiosFramework.Unika.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (interfaceDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, interfaceDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, InterfaceDeclarationSyntax unikaInterfaceSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<InterfaceDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var syntaxTree     = unikaInterfaceSyntax.SyntaxTree;
-                var filename       = Path.GetFileNameWithoutExtension(syntaxTree.FilePath);
-                var outputFilename = $"{filename}_{unikaInterfaceSyntax.Identifier}_IUnikaInterface.gen.cs";
-
-                var semanticModel = compilation.GetSemanticModel(syntaxTree);
+                var unikaInterfaceSyntax = candidate.declaration;
+                var semanticModel        = compilation.GetSemanticModel(unikaInterfaceSyntax.SyntaxTree);
                 UnikaSemanticsExtractor.ExtractInterfaceSemantics(unikaInterfaceSyntax, semanticModel, out var bodyContext);
                 var code = InterfaceCodeWriter.WriteInterfaceCode(unikaInterfaceSyntax, ref bodyContext);
 
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_IUnikaInterface.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, unikaInterfaceSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(CollectionComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 

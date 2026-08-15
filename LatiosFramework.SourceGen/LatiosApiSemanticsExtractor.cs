@@ -10,40 +10,48 @@ namespace LatiosFramework.SourceGen
 {
     internal static class LatiosApiSemanticsExtractor
     {
+        // How a cached field is constructed. See PrintFieldConstructionExpression for the emitted form.
         public enum FieldInitKind
         {
-            // Field type implements ILatiosApiGettable. Initialized via StaticAPI.Create<T>(ref state).
             Gettable,
-            // Field type implements ILatiosApiGettableBool. Initialized via StaticAPI.Create<T>(ref state, b).
             GettableBool,
-            // Field type is one of the built-in Unity Entities handle/lookup types that take a readOnly bool.
-            // Initialized via state.<builtinGetterMethodName><TComponentOrBuffer>(b).
+            // A built-in Unity Entities handle/lookup taking a readOnly bool.
             BuiltinWithBool,
-            // Field type is one of the built-in Unity Entities handle/lookup types that take no arguments.
-            // Initialized via state.<builtinGetterMethodName>().
+            // A built-in Unity Entities handle/lookup taking nothing.
             BuiltinNoBool,
-            // Field type is one of the built-in Unity Entities handle/lookup types that take no arguments.
-            // Initialized via state.<builtinGetterMethodName><TComponentOrBuffer>(b).
+            // A built-in Unity Entities handle/lookup taking only the component type.
             BuiltinNoBoolGeneric,
-            // Field type implements IInjectable. Initialized via StaticAPI.CreateInjectable<T>(ref state).
             Injectable,
         }
 
+        // Types are strings rather than ITypeSymbols because some entries name a type no generator has
+        // emitted yet, most notably an IJobEach's nested handle types, which have no symbol to compare.
         public struct FieldEntry
         {
-            public ITypeSymbol   type;
+            public string        typeFullName;
+            public string        simpleName;
             public bool?         boolValue;
             public string        fieldName;
             public FieldInitKind initKind;
-            // Only populated for BuiltinWithBool / BuiltinNoBool.
+            // Only populated for BuiltinWithBool / BuiltinNoBool / BuiltinNoBoolGeneric.
             public string builtinGetterMethodName;
+            // Only populated for BuiltinWithBool / BuiltinNoBoolGeneric, whose getters take the component type.
+            public string soloTypeArgumentFullName;
+        }
+
+        // Backs ILatiosApi.__GetJobDefaultQuery<T>(). Keyed by job type, since every entry is an EntityQuery.
+        public struct JobQueryEntry
+        {
+            public string jobFullName;
+            public string fieldName;
         }
 
         public struct BodyContext
         {
-            public string           structShortName;
-            public string           structFullName;
-            public List<FieldEntry> fields;
+            public string              structShortName;
+            public string              structFullName;
+            public List<FieldEntry>    fields;
+            public List<JobQueryEntry> jobQueries;
         }
 
         public static void ExtractApiSemantics(StructDeclarationSyntax structDeclarationSyntax,
@@ -54,6 +62,7 @@ namespace LatiosFramework.SourceGen
             bodyContext.structShortName = structDeclarationSyntax.Identifier.ToString();
             bodyContext.structFullName  = null;
             bodyContext.fields          = new List<FieldEntry>();
+            bodyContext.jobQueries      = new List<JobQueryEntry>();
 
             var declaringModel = compilation.GetSemanticModel(structDeclarationSyntax.SyntaxTree);
             var structSymbol   = declaringModel.GetDeclaredSymbol(structDeclarationSyntax, context.CancellationToken) as INamedTypeSymbol;
@@ -63,8 +72,7 @@ namespace LatiosFramework.SourceGen
 
             var stringBuilder = new StringBuilder();
 
-            // A partial type's Get*() usages may live in any of its partial-declaration files, not just the one
-            // that happens to carry the ": ISystem, ILatiosApi" base list that this generator matched on.
+            // Get*() usages may live in any partial declaration, not just the one carrying the base list.
             foreach (var syntaxRef in structSymbol.DeclaringSyntaxReferences)
             {
                 context.CancellationToken.ThrowIfCancellationRequested();
@@ -75,7 +83,7 @@ namespace LatiosFramework.SourceGen
                 foreach (var invocation in node.DescendantNodes().OfType<InvocationExpressionSyntax>())
                 {
                     context.CancellationToken.ThrowIfCancellationRequested();
-                    TryProcessInvocation(invocation, semanticModel, context, bodyContext.fields, stringBuilder);
+                    TryProcessInvocation(invocation, semanticModel, context, ref bodyContext, stringBuilder);
                 }
             }
         }
@@ -83,11 +91,13 @@ namespace LatiosFramework.SourceGen
         static void TryProcessInvocation(InvocationExpressionSyntax invocation,
                                          SemanticModel semanticModel,
                                          SourceProductionContext context,
-                                         List<FieldEntry>           fields,
+                                         ref BodyContext bodyContext,
                                          StringBuilder stringBuilder)
         {
             if (!(semanticModel.GetSymbolInfo(invocation, context.CancellationToken).Symbol is IMethodSymbol methodSymbol))
                 return;
+
+            var fields = bodyContext.fields;
 
             if (methodSymbol.Name == "Inject" || methodSymbol.Name == "InjectByRef")
             {
@@ -95,11 +105,13 @@ namespace LatiosFramework.SourceGen
                 return;
             }
 
+            if (JobEachSchedulingRecognizer.TryProcess(methodSymbol, ref bodyContext, stringBuilder))
+                return;
+
             if (!methodSymbol.Name.StartsWith("Get", StringComparison.Ordinal))
                 return;
 
-            var thisType     = methodSymbol.ContainingType;
-            var thisOriginal = thisType?.OriginalDefinition;
+            var thisOriginal = methodSymbol.ContainingType?.OriginalDefinition;
             if (thisOriginal == null || thisOriginal.Name != "LatiosApiInvoker" ||
                 thisOriginal.ContainingNamespace?.ToDisplayString() != "Latios")
                 return;
@@ -123,7 +135,7 @@ namespace LatiosFramework.SourceGen
                 boolValue = b;
             }
 
-            if (TryFindExisting(fields, returnType, boolValue))
+            if (TryFindExisting(fields, returnType.ToFullName(), boolValue))
                 return;
 
             var initKind = ClassifyReturnType(returnType, out var builtinGetterMethodName);
@@ -134,19 +146,40 @@ namespace LatiosFramework.SourceGen
                 return;
             }
 
+            AddField(fields, returnType.ToFullName(), returnType.ToSimpleName(), boolValue, initKind.Value,
+                     builtinGetterMethodName, GetSoloTypeArgumentFullName(returnType), stringBuilder);
+        }
+
+        internal static void AddField(List<FieldEntry> fields,
+                                      string typeFullName,
+                                      string simpleName,
+                                      bool?  boolValue,
+                                      FieldInitKind initKind,
+                                      string builtinGetterMethodName,
+                                      string soloTypeArgumentFullName,
+                                      StringBuilder stringBuilder)
+        {
             fields.Add(new FieldEntry
             {
-                type                    = returnType,
-                boolValue               = boolValue,
-                fieldName               = MakeFieldName(fields, returnType, boolValue, stringBuilder),
-                initKind                = initKind.Value,
-                builtinGetterMethodName = builtinGetterMethodName,
+                typeFullName             = typeFullName,
+                simpleName               = simpleName,
+                boolValue                = boolValue,
+                fieldName                = MakeFieldName(fields, simpleName, boolValue, stringBuilder),
+                initKind                 = initKind,
+                builtinGetterMethodName  = builtinGetterMethodName,
+                soloTypeArgumentFullName = soloTypeArgumentFullName,
             });
         }
 
-        // Recognizes calls to Latios.LatiosApiCreateExtensions.Inject<TInject, TSystem>()/InjectByRef<TInject, TSystem>()
-        // (invoked as injectable.Inject(api) / injectable.InjectByRef(api)) and caches TInject the same way a
-        // Gettable field is cached, so ILatiosApi.__Get<TInject>() can later resolve the cached instance for it.
+        internal static string GetSoloTypeArgumentFullName(ITypeSymbol type)
+        {
+            if (type is INamedTypeSymbol named && named.TypeArguments.Length == 1)
+                return named.TypeArguments[0].ToFullName();
+            return type.ToFullName();
+        }
+
+        // injectable.Inject(api) / injectable.InjectByRef(api) caches TInject like a Gettable field, so that
+        // ILatiosApi.__Get<TInject>() can later resolve it.
         static void TryProcessInjectInvocation(IMethodSymbol methodSymbol, List<FieldEntry> fields, StringBuilder stringBuilder)
         {
             var thisOriginal = methodSymbol.ContainingType?.OriginalDefinition;
@@ -158,16 +191,10 @@ namespace LatiosFramework.SourceGen
                 return;
             var injectableType = methodSymbol.TypeArguments[0];
 
-            if (TryFindExisting(fields, injectableType, null))
+            if (TryFindExisting(fields, injectableType.ToFullName(), null))
                 return;
 
-            fields.Add(new FieldEntry
-            {
-                type      = injectableType,
-                boolValue = null,
-                fieldName = MakeFieldName(fields, injectableType, null, stringBuilder),
-                initKind  = FieldInitKind.Injectable,
-            });
+            AddField(fields, injectableType.ToFullName(), injectableType.ToSimpleName(), null, FieldInitKind.Injectable, null, null, stringBuilder);
         }
 
         static ArgumentSyntax FindArgumentForParameter(InvocationExpressionSyntax invocation, IParameterSymbol parameter)
@@ -183,18 +210,17 @@ namespace LatiosFramework.SourceGen
             return null;
         }
 
-        static bool TryFindExisting(List<FieldEntry> fields, ITypeSymbol type, bool? boolValue)
+        internal static bool TryFindExisting(List<FieldEntry> fields, string typeFullName, bool? boolValue)
         {
             foreach (var f in fields)
             {
-                if (f.boolValue == boolValue && SymbolEqualityComparer.Default.Equals(f.type, type))
+                if (f.boolValue == boolValue && f.typeFullName == typeFullName)
                     return true;
             }
             return false;
         }
 
-        // Shared with InjectableSemanticsExtractor so it can reuse this exact taxonomy for classifying
-        // [Inject] field types instead of duplicating the hardcoded Unity.Entities type-name switch.
+        // Also classifies [Inject] field types for InjectableSemanticsExtractor and JobEachSemanticsExtractor.
         internal static FieldInitKind? ClassifyReturnType(ITypeSymbol returnType, out string builtinGetterMethodName)
         {
             builtinGetterMethodName = null;
@@ -235,20 +261,20 @@ namespace LatiosFramework.SourceGen
             return null;
         }
 
-        static string MakeFieldName(List<FieldEntry> existingFields, ITypeSymbol type, bool? boolValue, StringBuilder stringBuilder)
+        static string MakeFieldName(List<FieldEntry> existingFields, string simpleName, bool? boolValue, StringBuilder stringBuilder)
         {
-            var baseName = "m_" + SanitizeIdentifier(type.ToSimpleName(), stringBuilder);
+            var baseName = "m_" + SanitizeIdentifier(simpleName, stringBuilder);
             if (boolValue.HasValue)
                 baseName += boolValue.Value ? "_true" : "_false";
 
             var candidate = baseName;
-            var suffix    = 1;
+            var suffix    = 2;
             while (existingFields.Exists(f => f.fieldName == candidate))
-                candidate = $"{baseName}_{++suffix}";
+                candidate = $"{baseName}_{suffix++}";
             return candidate;
         }
 
-        static string SanitizeIdentifier(string s, StringBuilder stringBuilder)
+        internal static string SanitizeIdentifier(string s, StringBuilder stringBuilder)
         {
             stringBuilder.Clear();
             stringBuilder.EnsureCapacity(s.Length);

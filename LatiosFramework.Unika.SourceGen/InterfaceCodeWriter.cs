@@ -210,7 +210,7 @@ namespace LatiosFramework.Unika.SourceGen
             printer.PrintLine("    global::System.IComparable<global::Latios.Unika.ScriptRef>");
             {
                 printer.OpenScope();
-                printer.PrintLine("global::Latios.Unika.InternalSourceGen.StaticAPI.InterfaceRefData __data;");
+                printer.PrintLine("[global::Unity.Properties.CreateProperty] global::Latios.Unika.InternalSourceGen.StaticAPI.InterfaceRefData __data;");
                 printer.PrintBeginLine().PrintEndLine();
                 printer.PrintLine("public global::Unity.Entities.Entity entity => __data.entity;");
                 printer.PrintBeginLine().PrintEndLine();

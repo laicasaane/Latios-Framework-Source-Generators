@@ -46,9 +46,8 @@ namespace LatiosFramework.Unika.SourceGen
 
             var scopePrinter = new SyntaxNodeScopePrinter(Printer.DefaultLarge, authoringDeclaration.Parent);
             var printer      = scopePrinter.Printer;
-            // The copied field attributes (e.g. [Range], [Tooltip]) are only valid if whatever namespaces
-            // they came from in the original script file are also imported here, since this generated file
-            // has none of the original file's usings otherwise.
+            // Copied field attributes such as [Range] need the script file's usings, which this file
+            // otherwise has none of.
             foreach (var usingDirectiveText in context.usingDirectiveTexts)
                 printer.PrintLine(usingDirectiveText);
             scopePrinter.Printer = printer;
@@ -89,8 +88,8 @@ namespace LatiosFramework.Unika.SourceGen
             printer.PrintBeginLine("var script = new ").Print(context.scriptFullTypeName).PrintEndLine("();");
             foreach (var field in context.fields)
             {
-                // Non-public script fields are assigned via a generated helper method on the script struct
-                // itself, since this authoring class cannot access another type's private fields directly.
+                // Non-public fields go through a helper on the script struct, since this class cannot reach
+                // another type's private fields.
                 if (!field.isPublic)
                     continue;
                 printer.PrintBeginLine("script.").Print(field.fieldName).Print(" = ");
@@ -121,8 +120,8 @@ namespace LatiosFramework.Unika.SourceGen
                 var scriptScopePrinter = new SyntaxNodeScopePrinter(printer, context.scriptDeclarationSyntax.Parent);
                 scriptScopePrinter.PrintOpen(false);
                 printer = scriptScopePrinter.Printer;
-                // Note: no [CompilerGenerated] here - ScriptGenerator's own partial for this same
-                // struct type already carries one, and the attribute does not allow duplicates.
+                // No [CompilerGenerated]: ScriptGenerator's partial for this struct already carries one, and
+                // the attribute does not allow duplicates.
                 printer.PrintBeginLine();
                 foreach (var m in context.scriptDeclarationSyntax.Modifiers)
                     printer.Print(m.ToString()).Print(" ");
@@ -161,7 +160,7 @@ namespace LatiosFramework.Unika.SourceGen
                     printer.Print("baker.GetScriptRefOrDefaultFrom(").Print(field.fieldName).Print(")");
                     break;
                 case FieldKind.InterfaceRef:
-                    printer.Print("baker.GetInterfaceRefOrDefaultFrom(").Print(field.fieldName).Print(")");
+                    printer.Print("baker.GetInterfaceRefOrDefaultFrom(").Print(field.fieldName).Print(".authoringInterface)");
                     break;
                 case FieldKind.Entity:
                     printer.Print(field.fieldName).Print(" == null ? default : baker.GetEntity(").Print(field.fieldName)

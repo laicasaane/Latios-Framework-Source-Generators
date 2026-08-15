@@ -297,14 +297,12 @@ namespace LatiosFramework.Unika.SourceGen
             }
             context.usingDirectiveTexts = usingDirectiveTexts;
 
-            // Needed to reopen the script struct's own namespace/type scope, so that an internal helper
-            // method can be added to it for assigning its non-public [SerializeField] fields (an authoring
-            // class is a different type and cannot assign private fields on the script struct directly).
+            // Reopens the script struct's own scope, so a helper for assigning its non-public
+            // [SerializeField] fields can be added to it. The authoring class cannot assign them directly.
             context.scriptDeclarationSyntax = (StructDeclarationSyntax)scriptType.DeclaringSyntaxReferences[0].GetSyntax();
 
-            // UnikaScriptAutoAuthoring<T> subclasses don't get matched by AuthoringGenerator (which only
-            // matches direct UnikaScriptAuthoring<T> subclasses), so this generator implements the
-            // IUnikaInterfaceAuthoringImpl<...> boilerplate itself for every Unika interface the script implements.
+            // AuthoringGenerator only matches direct UnikaScriptAuthoring<T> subclasses, so the
+            // IUnikaInterfaceAuthoringImpl<> boilerplate for an auto-authoring class is emitted here instead.
             context.baseUnikaInterfaceNames = new List<string>();
             foreach (var iface in scriptType.AllInterfaces)
             {
@@ -346,17 +344,15 @@ namespace LatiosFramework.Unika.SourceGen
                                              $"global::Latios.Unika.Authoring.UnikaScriptAuthoring<{namedFieldType.TypeArguments[0].ToFullName()}>" :
                                              "global::Latios.Unika.Authoring.UnikaScriptAuthoringBase";
                 }
-                // A generator cannot semantically see the InterfaceRef struct that InterfaceGenerator nests
-                // inside a IUnikaInterface type (generators never observe each other's generated output), so
-                // this is detected and reconstructed by name/convention rather than by inspecting fieldType's
-                // members, exactly like AuthoringCodeWriter already does for the same reason.
+                // InterfaceGenerator's nested InterfaceRef is not observable from another generator, so it is
+                // matched by name and reconstructed, the same way AuthoringCodeWriter does.
                 else if (fieldType.Name == "InterfaceRef" && fieldType.ContainingType != null &&
                          fieldType.ContainingType.TypeKind == TypeKind.Interface &&
                          fieldType.ContainingType.InheritsFromInterface("global::Latios.Unika.IUnikaInterface"))
                 {
                     kind                   = AutoAuthoringCodeWriter.FieldKind.InterfaceRef;
                     scriptFieldTypeName    = $"{fieldType.ContainingType.ToFullName()}.InterfaceRef";
-                    authoringFieldTypeName = $"global::Latios.Unika.Authoring.IUnikaInterfaceAuthoring<{scriptFieldTypeName}>";
+                    authoringFieldTypeName = $"global::Latios.Unika.Authoring.InterfaceAuthoring<{scriptFieldTypeName}>";
                 }
                 else if (fieldType.ToFullName() == "global::Unity.Entities.Entity")
                 {

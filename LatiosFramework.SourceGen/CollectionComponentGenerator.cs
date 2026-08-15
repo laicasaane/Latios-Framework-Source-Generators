@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.IO;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -15,31 +14,30 @@ namespace LatiosFramework.SourceGen
             
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxStructInterfaceMatch(node, token, "ICollectionComponent"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.ICollectionComponent")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticStructInterfaceMatch(node, token, "global::Latios.ICollectionComponent",
+                                                                                                  "ICollectionComponent")
                 ).Where(t => t is { });
 
-            context.RegisterSourceOutput(candidateProvider, (sourceProductionContext, source) =>
+            context.RegisterSourceOutput(candidateProvider, (sourceProductionContext, candidate) =>
             {
-                GenerateOutput(sourceProductionContext, source);
+                GenerateOutput(sourceProductionContext, candidate);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, StructDeclarationSyntax collectionComponentSyntax)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<StructDeclarationSyntax> candidate)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var filename       = Path.GetFileNameWithoutExtension(collectionComponentSyntax.SyntaxTree.FilePath);
-                var outputFilename = $"{filename}_{collectionComponentSyntax.Identifier}_ICollectionComponent.gen.cs";
-
-                context.AddSource(outputFilename, ComponentCodeWriter.WriteComponentCode(collectionComponentSyntax, "Collection"));
+                context.AddSource(candidate.HintName("_ICollectionComponent.gen.cs"),
+                                  ComponentCodeWriter.WriteComponentCode(candidate.declaration, "Collection"));
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, collectionComponentSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(CollectionComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 

@@ -14,7 +14,7 @@ namespace LatiosFramework.SourceGen
             public ITypeSymbol                           type;
             public bool?                                 boolValue;
             public LatiosApiSemanticsExtractor.FieldInitKind initKind;
-            // Only populated for BuiltinWithBool / BuiltinNoBool.
+            // Only populated for the Builtin* kinds.
             public string builtinGetterMethodName;
         }
 
@@ -39,8 +39,6 @@ namespace LatiosFramework.SourceGen
 
             bodyContext.structFullName = structSymbol.ToFullName();
 
-            // [Inject] fields must be declared directly on the type carrying the IInjectable base list
-            // (unlike ILatiosApi's Get*() usages, there's no invocation to walk across partial declarations here).
             foreach (var field in structSymbol.GetMembers().OfType<IFieldSymbol>())
             {
                 context.CancellationToken.ThrowIfCancellationRequested();
@@ -51,12 +49,10 @@ namespace LatiosFramework.SourceGen
                     continue;
 
                 var initKind = LatiosApiSemanticsExtractor.ClassifyReturnType(field.Type, out var builtinGetterMethodName);
+                // An [Inject] field outside the supported taxonomy is skipped rather than reported, so the
+                // attribute can be applied defensively.
                 if (initKind == null)
-                {
-                    // Per design, an [Inject] field whose type isn't in the supported taxonomy is silently
-                    // skipped rather than reported as an error, so the attribute can be applied defensively.
                     continue;
-                }
 
                 bool? boolValue = null;
                 if (initKind == LatiosApiSemanticsExtractor.FieldInitKind.GettableBool ||

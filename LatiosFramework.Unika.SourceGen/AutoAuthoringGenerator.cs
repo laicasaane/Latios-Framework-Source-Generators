@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Threading;
 using LatiosFramework.SourceGen;
 using Microsoft.CodeAnalysis;
@@ -25,7 +24,9 @@ namespace LatiosFramework.Unika.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxClassGenericMatch(node, token, "UnikaScriptAutoAuthoring"),
-                transform: (node, token) => GetSemanticDirectGenericMatch(node, token, "global::Latios.Unika.Authoring.UnikaScriptAutoAuthoring<T>")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticDirectGenericMatch(node, token,
+                                                                                                 "global::Latios.Unika.Authoring.UnikaScriptAutoAuthoring<T>",
+                                                                                                 "UnikaScriptAutoAuthoring")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -33,48 +34,29 @@ namespace LatiosFramework.Unika.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (classDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, classDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        // Similar to GeneratorFilterMethods.GetSemanticClassGenericMatch, except it matches against the
-        // class's own base type rather than its base type's base type, since UnikaScriptAutoAuthoring<T>
-        // is the type directly inherited by the user's authoring class.
-        static ClassDeclarationSyntax GetSemanticDirectGenericMatch(GeneratorSyntaxContext ctx, CancellationToken cancellationToken, string fullSemanticGenericDefinitionName)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var classDeclarationSyntax = (ClassDeclarationSyntax)ctx.Node;
-            foreach (var baseTypeSyntax in classDeclarationSyntax.BaseList !.Types)
-            {
-                var type = ctx.SemanticModel.GetTypeInfo(baseTypeSyntax.Type).Type;
-                if (type != null && type.OriginalDefinition.ToFullName() == fullSemanticGenericDefinitionName)
-                    return classDeclarationSyntax;
-            }
-            return null;
-        }
-
-        static void GenerateOutput(SourceProductionContext context, ClassDeclarationSyntax unikaAutoAuthoringSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<ClassDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var syntaxTree     = unikaAutoAuthoringSyntax.SyntaxTree;
-                var filename       = Path.GetFileNameWithoutExtension(syntaxTree.FilePath);
-                var outputFilename = $"{filename}_{unikaAutoAuthoringSyntax.Identifier}_IUnikaAutoAuthoring.gen.cs";
-
-                var semanticModel = compilation.GetSemanticModel(syntaxTree);
+                var unikaAutoAuthoringSyntax = candidate.declaration;
+                var semanticModel            = compilation.GetSemanticModel(unikaAutoAuthoringSyntax.SyntaxTree);
                 UnikaSemanticsExtractor.ExtractAutoAuthoringSemantics(unikaAutoAuthoringSyntax, semanticModel, out var bodyContext);
                 var code = AutoAuthoringCodeWriter.WriteAutoAuthoringCode(unikaAutoAuthoringSyntax, ref bodyContext);
 
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_IUnikaAutoAuthoring.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, unikaAutoAuthoringSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(CollectionComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 

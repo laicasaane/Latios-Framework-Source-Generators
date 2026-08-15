@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -16,7 +13,8 @@ namespace LatiosFramework.SourceGen
 
             var candidateProvider = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: (node, token) => GeneratorFilterMethods.IsSyntaxInterfaceInterfaceMatch(node, token, "IVInterface"),
-                transform: (node, token) => GeneratorFilterMethods.GetSemanticInterfaceInterfaceMatch(node, token, "global::Latios.Unsafe.IVInterface")
+                transform: (node, token) => GeneratorFilterMethods.GetSemanticInterfaceInterfaceMatch(node, token, "global::Latios.Unsafe.IVInterface",
+                                                                                                     "IVInterface")
                 ).Where(t => t is { });
 
             var compilationProvider = context.CompilationProvider;
@@ -24,32 +22,29 @@ namespace LatiosFramework.SourceGen
 
             context.RegisterSourceOutput(combinedProviders, (sourceProductionContext, sourceProviderTuple) =>
             {
-                var (interfaceDeclarationSyntax, compilation) = sourceProviderTuple;
-                GenerateOutput(sourceProductionContext, interfaceDeclarationSyntax, compilation);
+                var (candidate, compilation) = sourceProviderTuple;
+                GenerateOutput(sourceProductionContext, candidate, compilation);
             });
         }
 
-        static void GenerateOutput(SourceProductionContext context, InterfaceDeclarationSyntax interfaceSyntax, Compilation compilation)
+        static void GenerateOutput(SourceProductionContext context, GeneratorCandidate<InterfaceDeclarationSyntax> candidate, Compilation compilation)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var syntaxTree     = interfaceSyntax.SyntaxTree;
-                var filename       = Path.GetFileNameWithoutExtension(syntaxTree.FilePath);
-                var outputFilename = $"{filename}_{interfaceSyntax.Identifier}_IVInterface.gen.cs";
-
-                var semanticModel = compilation.GetSemanticModel(syntaxTree);
+                var interfaceSyntax = candidate.declaration;
+                var semanticModel   = compilation.GetSemanticModel(interfaceSyntax.SyntaxTree);
                 VptrSemanticsExtractor.ExtractInterfaceSemantics(interfaceSyntax, semanticModel, out var bodyContext);
                 var code = VInterfaceCodeWriter.WriteInterfaceCode(interfaceSyntax, ref bodyContext);
 
-                context.AddSource(outputFilename, code);
+                context.AddSource(candidate.HintName("_IVInterface.gen.cs"), code);
             }
             catch (Exception e)
             {
                 if (e is OperationCanceledException)
                     throw;
                 context.ReportDiagnostic(
-                    Diagnostic.Create(CollectionComponentErrorDescriptor, interfaceSyntax.GetLocation(), e.ToUnityPrintableString()));
+                    Diagnostic.Create(CollectionComponentErrorDescriptor, candidate.declaration.GetLocation(), e.ToUnityPrintableString()));
             }
         }
 
